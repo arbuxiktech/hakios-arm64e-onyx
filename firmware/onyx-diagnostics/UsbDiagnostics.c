@@ -45,6 +45,29 @@ STATIC UINTN mNextLog;
 STATIC BOOLEAN mSendingLogs;
 STATIC BOOLEAN mRxQueued;
 STATIC BOOLEAN mResetAfterTx;
+STATIC EFI_USBFN_IO_ALLOCATE_TRANSFER_BUFFER mOriginalAllocate;
+STATIC EFI_USBFN_IO_CONFIGURE_ENABLE_ENDPOINTS_EX mOriginalConfigure;
+
+STATIC EFI_STATUS EFIAPI TraceAllocate (
+  EFI_USBFN_IO_PROTOCOL *This, UINTN Size, VOID **Buffer)
+{
+  EFI_STATUS Status;
+  Print (L"USB T1: DMA allocation begin (%Lu bytes)\r\n", (UINT64)Size);
+  Status = mOriginalAllocate (This, Size, Buffer);
+  Print (L"USB T1: DMA allocation returned %r\r\n", Status);
+  return Status;
+}
+
+STATIC EFI_STATUS EFIAPI TraceConfigure (
+  EFI_USBFN_IO_PROTOCOL *This, EFI_USB_DEVICE_INFO *DeviceInfo,
+  EFI_USB_SUPERSPEED_DEVICE_INFO *SuperSpeedInfo)
+{
+  EFI_STATUS Status;
+  Print (L"USB T2: endpoint configuration begin\r\n");
+  Status = mOriginalConfigure (This, DeviceInfo, SuperSpeedInfo);
+  Print (L"USB T2: endpoint configuration returned %r\r\n", Status);
+  return Status;
+}
 STATIC EFI_GUID mInitUsbControllerGuid = {
   0x1c0cffce, 0xfc8d, 0x4e44, { 0x8c, 0x78, 0x9c, 0x9e, 0x5b, 0x53, 0x0d, 0x36 }
 };
@@ -248,6 +271,7 @@ EFI_STATUS EFIAPI DiagnosticsEntry (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *Sy
   UINTN DataSize;
   UINTN Index;
   EFI_EVENT InitEvent;
+  BOOLEAN Started = FALSE;
   (VOID)ImageHandle;
   (VOID)SystemTable;
 
@@ -287,11 +311,29 @@ EFI_STATUS EFIAPI DiagnosticsEntry (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *Sy
     Print (L"USB P2: StartController begin\r\n");
     Status = Fn->StartController (Fn);
     Print (L"USB P2: StartController returned %r\r\n", Status);
-    Print (L"USB P3: controller probe finished; no enumeration attempted\r\n");
-    return Status;
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+    Print (L"USB P3: controller probe finished\r\n");
+    // Temporarily instrument this RAM protocol interface. Forward the exact
+    // original This pointer/arguments and restore the callbacks on return.
+    // No driver code, MMIO register or persistent storage is patched.
+    mOriginalAllocate = Fn->AllocateTransferBuffer;
+    mOriginalConfigure = Fn->ConfigureEnableEndpointsEx;
+    Fn->AllocateTransferBuffer = TraceAllocate;
+    Fn->ConfigureEnableEndpointsEx = TraceConfigure;
+    Print (L"USB T0: descriptor setup/start begin\r\n");
+    Status = mUsb->StartEx (&mDescriptorSet);
+    Fn->AllocateTransferBuffer = mOriginalAllocate;
+    Fn->ConfigureEnableEndpointsEx = mOriginalConfigure;
+    Print (L"USB T3: descriptor setup/start returned %r\r\n", Status);
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+    Started = TRUE;
   }
   Print (L"Starting read-only USB diagnostics: ONYXDIAG0001\r\n");
-  Status = mUsb->StartEx (&mDescriptorSet);
+  Status = Started ? EFI_SUCCESS : mUsb->StartEx (&mDescriptorSet);
   if (EFI_ERROR (Status)) {
     Print (L"USB start failed: %r\r\n", Status);
     return Status;

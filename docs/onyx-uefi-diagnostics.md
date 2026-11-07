@@ -199,6 +199,28 @@ Supply `ONYX_REFERENCE_BOOT` to automatically package the corrected gzip profile
 Without that reference, the build leaves an `upstream-container.img` for inspection
 and asks for explicit profile repacking; it is not a validated hardware candidate.
 
+The v8 screen confirmed that both StopController and StartController returned
+Success. V9 temporarily wraps the UsbfnIo RAM protocol's transfer-buffer allocator
+and endpoint-configure callback, forwarding their original arguments and This
+pointer unchanged and restoring the callbacks if startup returns. It prints T0
+before descriptor setup, T1 around allocation, T2 around endpoint configuration,
+and T3 after startup returns. This instruments RAM interfaces only; it does not
+patch driver code, hardware registers or persistent storage. If startup completes,
+the ordinary read-only USB log service continues.
+
+V9 was accepted by ABL, but the diagnostic interface has not enumerated. Its last
+on-screen T-step is pending user observation. Candidate:
+`out/onyx-uefi-usb-v9/onyx-uefi-diagnostics-v9-trace.img`, SHA-256
+`2db395262f09186b36f91e576cb587a15ae9a015bd6534e648dbc406c0dac56d`.
+
+An offline comparison extracted 104 EFI images from the supplied OxygenOS
+`uefi.img`. Its original UsbDeviceDxe, UsbfnDwc3Dxe, UsbConfigDxe, UsbInitDxe and
+UsbPwrCtrlDxe are byte-identical to the corresponding original Silicium binaries.
+The selected build uses those same files except UsbConfigDxe, which selects
+Silicium's patched variant. This weakens the firmware-version-mismatch hypothesis;
+it does not verify the installed partition contents. The comparison and extracted
+reference binaries remain local under `out/stock-usb-reference`.
+
 References:
 
 - [Android generic boot architecture](https://source.android.com/docs/core/architecture/partitions/generic-boot)
