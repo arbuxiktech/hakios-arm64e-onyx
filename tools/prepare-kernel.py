@@ -75,6 +75,12 @@ def apply_overlay(tree, source):
     path = "bsd/conf/files"
     before = (tree / path).read_text()
     after = replace_once(before, "bsd/dev/redwood_goodix.c\tstandard\n", "")
+    # The Dada WLAN transport needs a separately linked ath12k port. Neither
+    # that transport nor its Bluetooth companion belongs in Onyx boot bring-up.
+    for entry in ("bsd/dev/hakios_dada_wifi.c\tstandard\n",
+                  "bsd/dev/hakios_dada_wlan.c\tstandard\n",
+                  "bsd/dev/hakios_dada_btsk.c\toptional skywalk\n"):
+        after = replace_once(after, entry, "")
     modifications[path] = (before, after + "\nbsd/dev/onyx_touch.c\t\tstandard\n")
     path = "bsd/sys/redwood_input.h"
     before = (tree / path).read_text()
@@ -82,8 +88,13 @@ def apply_overlay(tree, source):
         "void onyx_touch_init(void); /* onyx_touch_probe=1: passive diagnostics only */\nvoid redwood_input_init(void);"))
     path = "bsd/dev/redwood_input.c"
     before = (tree / path).read_text()
-    modifications[path] = (before, replace_once(before, "\tredwood_goodix_init();",
-        "\tonyx_touch_init(); /* Onyx does not use Redwood Goodix/FocalTech */"))
+    after = replace_once(before, "\tredwood_goodix_init();",
+        "\tonyx_touch_init(); /* Onyx does not use Redwood Goodix/FocalTech */")
+    after = replace_once(after, "\t\textern void hakios_dada_wifi_init(void);\n", "")
+    after = replace_once(after,
+        "\t\thakios_dada_wifi_init();       /* boot-arg dadawifi=N: the Wi-Fi's PCIe link (hakios_dada_wifi.c) */\n",
+        "\t\t/* Dada Wi-Fi/Bluetooth transport excluded from Onyx boot bring-up. */\n")
+    modifications[path] = (before, after)
     modifications["bsd/dev/onyx_touch.c"] = ("", source)
     overlay = []
     for name, (before, after) in modifications.items():

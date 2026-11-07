@@ -1,6 +1,6 @@
 --- a/bsd/conf/files
 +++ b/bsd/conf/files
-@@ -110,7 +110,6 @@
+@@ -110,15 +110,11 @@
  bsd/dev/monotonic.c         optional config_cpu_counters
  bsd/dev/redwood_input.c	standard
  bsd/dev/redwood_virtio_input.c	standard
@@ -8,7 +8,15 @@
  bsd/dev/hakios_dada_touch.c	standard
  bsd/dev/hakios_dada_gauge.c	standard
  bsd/dev/hakios_dada_amp.c	standard
-@@ -678,3 +677,5 @@
+ bsd/dev/hakios_dada_audio.c	standard
+ bsd/dev/hakios_dada_camera.c	standard
+-bsd/dev/hakios_dada_wifi.c	standard
+-bsd/dev/hakios_dada_btsk.c	optional skywalk
+-bsd/dev/hakios_dada_wlan.c	standard
+ bsd/dev/hakios_dada_cpu.c	standard
+ bsd/dev/hakios_cputop.c	standard
+ bsd/dev/hakios_dada_gpu.c	standard
+@@ -678,3 +674,5 @@
  bsd/skywalk/packet/pbufpool.c			optional skywalk bound-checks
  bsd/skywalk/packet/pbufpool_kern.c		optional skywalk bound-checks
  bsd/dev/cpu_copy_in_cksum_gen.c			optional skywalk bound-checks
@@ -35,6 +43,18 @@
  	hakios_dada_touch_init();
  	{
  		extern void hakios_dada_gauge_init(void);
+@@ -239,9 +239,8 @@
+ 		extern void hakios_dada_camera_init(void);
+ 
+ 		hakios_dada_camera_init();     /* boot-arg dadacam=N: the cameras (hakios_dada_camera.c) */
+-		extern void hakios_dada_wifi_init(void);
+-
+-		hakios_dada_wifi_init();       /* boot-arg dadawifi=N: the Wi-Fi's PCIe link (hakios_dada_wifi.c) */
++
++		/* Dada Wi-Fi/Bluetooth transport excluded from Onyx boot bring-up. */
+ 		extern void hakios_dada_cpu_init(void);
+ 
+ 		hakios_dada_cpu_init();        /* boot-arg dadacpu=N: the CPU clocks through SCMI (hakios_dada_cpu.c) */
 --- /dev/null
 +++ b/bsd/dev/onyx_touch.c
 @@ -0,0 +1,1648 @@
