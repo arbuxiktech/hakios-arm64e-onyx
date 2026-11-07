@@ -22,7 +22,6 @@ jobs:
     timeout-minutes: 90
     env:
       XCODE_VERSION: ${{ inputs.xcode_version }}
-      ONYX_BUILD_ROOT: ${{ runner.temp }}/onyx-ios26
       HOMEBREW_NO_AUTO_UPDATE: '1'
       JOBS: '3'
     steps:
@@ -34,6 +33,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p out/macos-ci
+          echo "ONYX_BUILD_ROOT=$RUNNER_TEMP/onyx-ios26" >> "$GITHUB_ENV"
           if [[ ! "$XCODE_VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
             echo 'Invalid Xcode version format' >&2
             exit 1
@@ -79,3 +79,4 @@ jobs:
           path: out/macos-ci/
           if-no-files-found: warn
           retention-days: 14
+
