@@ -10,3 +10,9 @@ __pycache__/
 *.apfs
 *.metallib
 tools/export.local
+
+# Onyx host workspace and private firmware reports
+/upstream/
+/out/
+/reports/
+*.pyc

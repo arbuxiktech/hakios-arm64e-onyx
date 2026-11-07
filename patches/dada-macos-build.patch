@@ -1,0 +1,99 @@
+diff --git a/xnu-env.sh b/xnu-env.sh
+--- a/xnu-env.sh
++++ b/xnu-env.sh
+@@ -7,12 +7,14 @@
+ export XNU_SRC=${XNU_SRC:-$DARWIN_REDWOOD/xnu-src/xnu-8796.121.2}
+ export XNUDEPS=$DARWIN_REDWOOD/xnu-deps
+ export PATH=$XNUDEPS/host/bin:$PATH
+-export XNU_SDK_PATH=$XNUDEPS/sdk/iPhoneOS16.5.xnu.sdk
+-export XNU_SDK_VERSION=16.5
++export XNU_SDK_PATH=$XNUDEPS/sdk/iPhoneOS26.xnu.sdk
++export XNU_SDK_VERSION=${XNU_SDK_VERSION:-16.5}
+ export XNU_PLATFORM_PATH=$XNUDEPS/sdk/Platforms/iPhoneOS.platform
+ # The architecture of the kernel and of everything linked into it: arm64, or arm64e for the pointer
+ # authentication work (docs/ARM64E.md). One board configuration serves both.
+ export XNU_ARCH=${XNU_ARCH:-arm64}
+ # On macOS the cctools, mig, unifdef and csh come from Xcode and the system instead of theos and
+ # sources built here; the scripts look at this to choose.
+-[ "$(uname -s)" = Darwin ] && export XNU_HOST_DARWIN=1
++if [ "$(uname -s)" = Darwin ]; then
++    export XNU_HOST_DARWIN=1
++fi
+diff --git a/xnu-deps/host/bin/xnu-clang b/xnu-deps/host/bin/xnu-clang
+--- a/xnu-deps/host/bin/xnu-clang
++++ b/xnu-deps/host/bin/xnu-clang
+@@ -14,5 +14,5 @@
+     *) args+=("$a");;
+   esac
+ done
+-exec /usr/bin/$drv -include "$HB/../../hostinc/xnu_clang_compat.h" -target arm64-apple-ios${XNU_SDK_VERSION:-16.5} --ld-path="$HB/ld64" \
++exec /usr/bin/xcrun --sdk iphoneos "$drv" -include "$HB/../../hostinc/xnu_clang_compat.h" -target "${XNU_ARCH:-arm64e}-apple-ios${XNU_SDK_VERSION}" \
+   -w "${extra[@]}" "${args[@]}"
+diff --git a/xnu-deps/host/bin/iig b/xnu-deps/host/bin/iig
+--- a/xnu-deps/host/bin/iig
++++ b/xnu-deps/host/bin/iig
+@@ -1,43 +1,10 @@
+ #!/bin/bash
+-# Stand-in for Apple's closed-source iig (DriverKit interface generator).
+-#
+-# It now PREFERS the real iig from the active Xcode, passing through the exact arguments the build
+-# gives (including the clang args after `--`).  That matters for xnu-12377/iOS 26, whose IOService
+-# and IOUserServer .iig files added kernel methods (Panic, SetPowerOverride, CreatePMAssertion, ...)
+-# that no pre-generated SDK header carries, so the real iig is the only way to get a matching
+-# kernel-side dispatch header and implementation.
+-#
+-# When the real iig cannot run (missing, or it fails on this build's clang setup) it falls back to a
+-# pre-generated header: from the macOS 13.3 SDK (xnu-8796 family), then the current Xcode SDK, then
+-# a stub for xnu-internal test classes (e.g. TestDextRematch).  The implementation falls back to
+-# $XNUDEPS/iig-impl/<name>.iig.cpp if present, else an empty TU.
+-XNUDEPS=${XNUDEPS:-$(cd "$(dirname "$0")/../.." && pwd)}
+-SDKH="$XNUDEPS/MacOSX13.3.sdk/System/Library/Frameworks/Kernel.framework/Headers"
+-ARGS=("$@")
+-def=""; hdr=""; impl=""
+-while [ $# -gt 0 ]; do case "$1" in
+-  --def) def="$2"; shift 2;; --header) hdr="$2"; shift 2;; --impl) impl="$2"; shift 2;;
+-  --) break;; *) shift;; esac; done
+-name="$(basename "$def" .iig)"
+-
+-# 1. The real iig, with the build's own arguments.  It writes both --header and --impl.
+-REAL_IIG="$(xcode-select -p 2>/dev/null)/Toolchains/XcodeDefault.xctoolchain/usr/bin/iig"
+-if [ -x "$REAL_IIG" ] && "$REAL_IIG" "${ARGS[@]}" >/dev/null 2>&1 && [ -s "$hdr" ]; then
+-  exit 0
++# Onyx iOS 26: require real, matching IIG. Never fall back to an empty interface.
++set -euo pipefail
++DEVELOPER_DIR=${DEVELOPER_DIR:-$(xcode-select -p)}
++REAL_IIG=$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/iig
++if [ ! -x "$REAL_IIG" ]; then
++    echo "Matching Xcode IIG is missing: $REAL_IIG" >&2
++    exit 1
+ fi
+-
+-# 2. Fallback: a pre-generated header.
+-src="$(find "$SDKH" -name "$name.h" -path '*DriverKit*' | head -1)"
+-[ -z "$src" ] && src="$(find "$SDKH" -name "$name.h" | xargs grep -l 'iig(DriverKit' 2>/dev/null | head -1)"
+-if [ -z "$src" ]; then
+-  XC="$(xcrun --sdk macosx --show-sdk-path 2>/dev/null)"
+-  [ -n "$XC" ] && src="$(find "$XC/System/Library/Frameworks/Kernel.framework/Versions/A/Headers/DriverKit" "$XC/System/Library/Frameworks/DriverKit.framework/Versions/A/Headers" -name "$name.h" 2>/dev/null | head -1)"
+-fi
+-if [ -z "$src" ]; then
+-  echo "iig shim: no pre-generated header for $name; emitting a stub (xnu-internal iig such as TestDextRematch)" >&2
+-  echo "/* $name: iig stub (no pre-generated header available) */" > "$hdr"
+-else
+-  cp "$src" "$hdr"
+-fi
+-if [ -f "$XNUDEPS/iig-impl/$name.iig.cpp" ]; then cp "$XNUDEPS/iig-impl/$name.iig.cpp" "$impl"
+-else echo "/* $name: no DriverKit implementation generated (iig shim) */" > "$impl"; fi
++exec "$REAL_IIG" "$@"
+diff --git a/xnu-deps/setup.sh b/xnu-deps/setup.sh
+--- a/xnu-deps/setup.sh
++++ b/xnu-deps/setup.sh
+@@ -232,7 +232,8 @@
+ 		log "building libfirehose_kernel.a"
+ 		mkdir -p build/firehose
+ 		xnu-clang -arch ${XNU_ARCH:-arm64} -c -Os -mkernel -nostdinc -fno-builtin \
+-			-DKERNEL=1 -DKERNEL_PRIVATE=1 -DXNU_KERNEL_PRIVATE=0 -DPRIVATE=1 -D__DARWIN_64_BIT_INO_T=1 \
++			-isystem "$(/usr/bin/xcrun --sdk iphoneos clang -print-resource-dir)/include" \
++			-DKERNEL=1 -DKERNEL_PRIVATE=1 -DXNU_KERNEL_PRIVATE=1 -DPRIVATE=1 -D__DARWIN_64_BIT_INO_T=1 \
+ 			-DDISPATCH_USE_DTRACE=0 -DOS_ATOMIC_CONFIG_MEMORY_ORDER_DEPENDENCY=1 \
+ 			-DOS_ATOMIC_CONFIG_STARVATION_FREE_ONLY=0 -DOS_FIREHOSE_SPI=1 -DARM64_BOARD_CONFIG_BCM2837 \
+ 			-Ilibdispatch -Ilibdispatch/src -Ilibdispatch/src/firehose \

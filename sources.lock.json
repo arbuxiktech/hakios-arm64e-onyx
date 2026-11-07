@@ -1,0 +1,47 @@
+{
+  "repositories": [
+    {
+      "path": "upstream/hakios-arm64e-dada",
+      "url": "https://github.com/superboyyy/hakios-arm64e-dada.git",
+      "commit": "f1ae906fcc43ba8f763663257724ba938fb820ab"
+    },
+    {
+      "path": "upstream/hakios-xnu-kernel",
+      "url": "https://github.com/oosexgang/hakios-xnu-kernel.git",
+      "commit": "63fc2b4633bac3af8e57dadab9f5a8d4cb940438"
+    },
+    {
+      "path": "upstream/Mu-Silicium",
+      "url": "https://github.com/Project-Silicium/Mu-Silicium.git",
+      "commit": "8471e47f5248ebbffc2e6196b683204163efe155"
+    },
+    {
+      "path": "upstream/onyx-kernel",
+      "url": "https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git",
+      "commit": "58e48d87fdc02f1e2978547f75ea524962217cc5",
+      "objects_only": true
+    },
+    {
+      "path": "upstream/onyx-devicetrees",
+      "url": "https://github.com/xiaomi-onyx-dev/android_kernel_xiaomi_sm8735-devicetrees.git",
+      "commit": "f4fbbed3359e85ffee608a0ff4359fa462735614"
+    },
+    {
+      "path": "upstream/onyx-vendor-devicetree",
+      "url": "https://github.com/MiCode/kernel_devicetree.git",
+      "commit": "2e51db4a1ea216ef69122485bf53161743da55b7"
+    },
+    {
+      "path": "upstream/onyx-modules",
+      "url": "https://github.com/xiaomi-onyx-dev/android_kernel_xiaomi_sm8735-modules.git",
+      "commit": "556221b539c13b830ff2b8b1600b3dd54be3c9d8",
+      "objects_only": true
+    },
+    {
+      "path": "upstream/hakios-onyx-reference",
+      "url": "https://github.com/Aymon-njz/hackios-xnu-kernel-Onyx.git",
+      "commit": "1a1f3d3510ccf3f1a92afd7238ac406dd9d6897a"
+    }
+  ],
+  "submodules": "Not fetched. UEFI dependencies and vendor binaries require separate preparation."
+}

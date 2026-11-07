@@ -1,0 +1,24 @@
+--- a/src/firehose/firehose_buffer.c
++++ b/src/firehose/firehose_buffer.c
+@@ -81,15 +81,18 @@
+ 
+ #define fcp_quarntined fcp_quarantined
+ 
+-#include <kern/debug.h>
++/* Only opaque thread IDs and VM scalars are needed by this support object. */
++#include <mach/mach_types.h>
++extern thread_t current_thread(void);
++extern uint64_t thread_tid(thread_t);
+ #include <machine/cpu_number.h>
+-#include <kern/thread.h>
++
+ #include <mach/port.h>
+ #include <stdbool.h>
+ #include <string.h>
+ #include <sys/param.h>
+ #include <sys/types.h>
+-#include <vm/vm_kern.h>
++#include <mach/vm_types.h>
+ #include <firehose_types_private.h> // <firehose/firehose_types_private.h>
+ #include <tracepoint_private.h> // <firehose/tracepoint_private.h>
+ #include <chunk_private.h> // <firehose/chunk_private.h>

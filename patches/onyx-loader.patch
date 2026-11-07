@@ -1,0 +1,126 @@
+--- a/base/xnuloader/loader.c
++++ b/base/xnuloader/loader.c
+@@ -10,6 +10,16 @@
+  *   - exits boot services, turns the MMU off and jumps to the kernel entry
+  */
+ #include "efi.h"
++
++/* Onyx bring-up: no persistent writes through this application's BlockIO paths.
++ * This does not constrain firmware drivers or a future kernel's native UFS driver. */
++static efi_status
++onyx_deny_storage_write(uint32_t media_id, uint64_t lba, uint64_t size, void *buffer)
++{
++    (void)media_id; (void)lba; (void)size; (void)buffer;
++    return EFI_ERROR_BIT | 15; /* EFI_ACCESS_DENIED */
++}
++
+ #include "identity.h"         /* who iOS shall think we are: from the iPhone's own device tree (mkidentity.py) */
+ 
+ /* ------------------------------------------------------------------------ */
+@@ -374,7 +384,7 @@
+ static void
+ write_logs(const char *klog, uint64_t klog_len)
+ {
+-	efi_block_io *bio = find_log_partition();
++	efi_block_io *bio = NULL; /* Onyx: USB/console logs only */
+ 
+ 
+ 	compose_logs(klog, klog_len);
+@@ -403,7 +413,7 @@
+ 		compose_logs(klog, klog_len);
+ 		return;
+ 	}
+-	ws = bio->write_blocks(bio, bio->media->media_id, 0, len, out_buf);
++	ws = onyx_deny_storage_write( bio->media->media_id, 0, len, out_buf);
+ 
+ 	if (!EFI_ERROR(ws)) {
+ 		bio->flush_blocks(bio);
+@@ -623,6 +633,21 @@
+  * device adds its description here (common/new-device.sh writes a starting point, docs/PORTING.md says
+  * where each value comes from); a display that matches none is QEMU's ramfb.
+  */
++
++#ifdef ONYX_PORT
++/* Project-Silicium onyx.dts and onyxPkg MemoryMapLib, pinned in sources.lock.json.
++ * Do not select by framebuffer: dada uses the same framebuffer reservation. */
++static const struct platform platform_onyx = {
++    .name = "onyx",
++    .io_base = 0x00400000, .io_size = 0x3FC00000,
++    .gic_dist = 0x17100000, .gic_redist = 0x17180000,
++    .gic_redist_size = 0x00200000, .gic_redist_stride = 0x00040000,
++    .uart = 0, .log_other_cpu = 0,
++    .cores = 8, .core_shift = 8, .small_cores = 0,
++    .fb_base = 0xFC800000,
++};
++#endif
++
+ static const struct platform *const platforms[] = {
+ 	&platform_redwood,
+ 	&platform_dada,
+@@ -830,7 +855,7 @@
+ /* each alone in a cache line: one core reads them with its caches off */
+ static struct {
+ 	uint64_t entry, boot_args, probe_keys_pa, probe_slot_pa;
+-} other_cpu_start __attribute__((aligned(64)));
++} other_cpu_start __attribute__((used, aligned(64)));
+ volatile uint64_t other_cpu_stage __attribute__((aligned(64)));  /* 1: that core has reached other_cpu_entry */
+ volatile uint64_t other_cpu_done __attribute__((aligned(64)));   /* 1: the kernel is back (other_cpu_return_stub) */
+ uint64_t psci_by_hvc __attribute__((aligned(64)));
+@@ -2550,7 +2575,7 @@
+ 				flush_dcache((uint64_t)(uintptr_t)block_buffer,
+ 				    (uint64_t)(uintptr_t)block_buffer + bytes);
+ 				want = ufs_crc32(block_buffer, bytes);
+-				s = bio->write_blocks(bio, bio->media->media_id, lba, bytes, block_buffer);
++				s = onyx_deny_storage_write( bio->media->media_id, lba, bytes, block_buffer);
+ 				if (!EFI_ERROR(s)) {
+ 					bio->flush_blocks(bio);
+ 					s = bio->read_blocks(bio, bio->media->media_id, lba, bytes, block_buffer);
+@@ -4544,7 +4569,7 @@
+ 			if (piece > sizeof(dsu_check)) {
+ 				piece = sizeof(dsu_check);
+ 			}
+-			if (at % bs || EFI_ERROR(data->write_blocks(data, data->media->media_id, at / bs, piece, (void *)src)) ||
++			if (at % bs || EFI_ERROR(onyx_deny_storage_write( data->media->media_id, at / bs, piece, (void *)src)) ||
+ 			    EFI_ERROR(data->flush_blocks(data)) ||
+ 			    EFI_ERROR(data->read_blocks(data, data->media->media_id, at / bs, piece, dsu_check)) ||
+ 			    memcmp(dsu_check, src, piece) != 0) {
+@@ -5115,7 +5140,11 @@
+ 	print("CurrentEL=%x MIDR=%x MMFR0=%x CNTFRQ=%d image=%x\n", READ_SYSREG(CurrentEL) >> 2, READ_SYSREG(MIDR_EL1),
+ 	    READ_SYSREG(ID_AA64MMFR0_EL1), READ_SYSREG(CNTFRQ_EL0), (uint64_t)(uintptr_t)&__ImageBase);
+ 
+-	PLAT = &platform_qemu_virt;
++#ifdef ONYX_PORT
++    PLAT = &platform_onyx;
++#else
++    PLAT = &platform_qemu_virt;
++#endif
+ 	if (EFI_ERROR(BS->locate_protocol(&gop_guid, NULL, (void **)&GOP)) || GOP->mode == NULL ||
+ 	    GOP->mode->info == NULL || GOP->mode->fb_base == 0) {
+ 		GOP = NULL;                     /* no display (QEMU without -device ramfb) */
+@@ -5124,14 +5153,26 @@
+ 		SCREEN.width = GOP->mode->info->width;
+ 		SCREEN.height = GOP->mode->info->height;
+ 		SCREEN.stride = GOP->mode->info->pixels_per_scanline * 4;
++#ifndef ONYX_PORT
+ 		for (unsigned i = 0; i < sizeof(platforms) / sizeof(platforms[0]); i++)
+ 			if (platforms[i]->fb_base == SCREEN.base)
+ 				PLAT = platforms[i];
+ 		if (PLAT == &platform_qemu_virt)
+ 			ramfb_phone_screen();
++#endif
+ 		print("display %d x %d at %x\n", (uint64_t)SCREEN.width, (uint64_t)SCREEN.height, SCREEN.base);
+ 	}
+ 	print("platform %s\n", PLAT->name);
++#ifdef ONYX_PORT
++    print("ONYX DIAGNOSTICS ONLY: XNU has not been started\n");
++    print("GICD=%x GICR=%x stride=%x\n", PLAT->gic_dist, PLAT->gic_redist, PLAT->gic_redist_stride);
++    print("MPIDR=%x ISAR1=%x ISAR2=%x PFR0=%x\n", READ_SYSREG(MPIDR_EL1),
++        READ_SYSREG(ID_AA64ISAR1_EL1), READ_SYSREG(ID_AA64ISAR2_EL1), READ_SYSREG(ID_AA64PFR0_EL1));
++    print("No disk operations, watchdog SMCs or kernel handoff in this entry.\n");
++    print("Returning to UEFI in 15 seconds.\n");
++    BS->stall(15000000);
++    return 0;
++#endif
+ 
+ 	install_exception_hook();
+ 	wdt_arm();

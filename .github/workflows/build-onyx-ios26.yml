@@ -1,0 +1,81 @@
+name: Build Onyx iOS 26 kernel
+
+on:
+  workflow_dispatch:
+    inputs:
+      xcode_version:
+        description: Installed Xcode version on the macOS 26 runner
+        required: true
+        default: '26.6'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: onyx-ios26-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  kernel:
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      XCODE_VERSION: ${{ inputs.xcode_version }}
+      ONYX_BUILD_ROOT: ${{ runner.temp }}/onyx-ios26
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      JOBS: '3'
+    steps:
+      - name: Check out port tools
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Select Xcode and require the real IIG tool
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out/macos-ci
+          if [[ ! "$XCODE_VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            echo 'Invalid Xcode version format' >&2
+            exit 1
+          fi
+          developer="/Applications/Xcode_${XCODE_VERSION}.app/Contents/Developer"
+          if [ ! -d "$developer" ]; then
+            echo "Requested Xcode is unavailable; installed applications:" >&2
+            find /Applications -maxdepth 1 -name 'Xcode*.app' -print
+            exit 1
+          fi
+          sudo xcode-select --switch "$developer"
+          echo "DEVELOPER_DIR=$developer" >> "$GITHUB_ENV"
+          test -x "$developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/iig"
+          xcodebuild -version | tee out/macos-ci/xcode-version.txt
+          xcrun --sdk iphoneos clang --version | tee out/macos-ci/compiler-version.txt
+
+      - name: Install build prerequisites
+        run: brew install bison flex m4 autoconf automake
+
+      - name: Fetch pinned sources and prepare the Onyx kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/bootstrap.py --kernel-only
+          tree="$ONYX_BUILD_ROOT/xnu12377"
+          mkdir -p "$ONYX_BUILD_ROOT"
+          git init "$tree"
+          git -C "$tree" remote add origin https://github.com/apple-oss-distributions/xnu.git
+          git -C "$tree" fetch --depth 1 origin ac9718fb1af618d5ce8678d0dc6e8a58f252216f
+          git -C "$tree" checkout --detach FETCH_HEAD
+          python3 tools/prepare-kernel.py "$tree"
+          cp out/kernel-preparation.json out/macos-ci/
+
+      - name: Build and verify the arm64e kernel
+        shell: bash
+        run: bash tools/build-kernel-macos.sh
+
+      - name: Upload kernel and diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: onyx-ios26-kernel-${{ github.run_number }}
+          path: out/macos-ci/
+          if-no-files-found: warn
+          retention-days: 14

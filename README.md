@@ -1,56 +1,145 @@
-# hakios-arm64e-dada: iOS 26 on the Xiaomi 15
+# iOS 26 bring-up on POCO F7 / Onyx
 
-English | [简体中文](README.zh-CN.md)
+Scope: boot, framebuffer and touch first; sound and other peripherals later.
+**This is an incomplete port, not a flashable ROM. iOS and touch have not booted on this phone.**
 
-Boots Apple's open-source XNU kernel (xnu-12377.121.6, the kernel of iOS 26) on the Xiaomi 15 (codename dada,
-Snapdragon 8 Elite, SM8750) and runs the iOS 26 arm64e user space on top of it.
+## Hardware confirmed so far
 
-Built on [HakiOS](https://github.com/oosexgang/hakios-xnu-kernel), with
-arm64e, iOS 26 and dada support added.
+The connected device identifies its vendor device as `onyx` and SoC as `SM8735`.
+The CPU reports `paca` and `pacg`. Android model/fingerprint and lock-state properties
+are spoofed by the installed ROM and are not evidence of the physical model or unlock state.
 
-> Experimental. Requires an unlocked bootloader and can cost you your data or even brick the phone.
-> Only try it if you are comfortable tinkering and can accept the risk.
+POCO F7 uses Snapdragon **8s Gen 4**, not the 8 Elite used by Xiaomi 15 / Dada.
+Project Silicium already supplies an Onyx platform. Its published status lists display,
+storage and USB device mode, but does not claim Linux or Windows boot.
 
-## Status
+The phone's active input is `NVTCapacitiveTouchScreen`; `spi4.0` binds to `NVT-ts`,
+and `nt38771_touch.ko` is installed. Xiaomi's stock Onyx device tree identifies
+Novatek SPI touch on SE4, 19.2 MHz, IRQ GPIO78. The reset-GPIO entry is commented
+out: GPIO14 must not be toggled without further evidence. Panel variants include CSOT and TM.
 
-| Part | Status |
-| --- | --- |
-| CPU | arm64e runs natively on the Oryon cores: all 8 cores up (prime cores included), hardware PAC, clocked to 3.52 GHz over SCMI, no instruction translation |
-| Boot | Our own EFI loader, started from Mu-Silicium UEFI; the iOS image lives in an Android DSU partition |
-| System | iOS 26 reaches the home screen; touch works; flash storage read and written on demand |
-| GPU | Adreno 830 powered up. Metal goes through metal2vulkan (Metal → Vulkan), then Turnip, then our kernel driver, and runs on the Adreno |
-| Liquid Glass | Core shaders translate correctly (compared pixel by pixel against Apple's GPU on a Mac); some issues still need debugging |
-| Audio | Speaker playback path (ADSP, AudioReach, CS35L43 amplifiers) works; system sounds and microphones are in progress |
-| Battery | Fuel gauge reported to iOS |
-| Wi-Fi / Bluetooth | Bluetooth works. Wi-Fi gets as far as WMI, but the firmware dies in most runs. Note: the Wi-Fi driver in the current kernel source is a temporary stand-in |
-| HDR, camera, modem | Not started |
+The live touch configuration enables host processing of raw frames, with 18 x 39
+sensor nodes and 100x coordinate resolution. The input device is virtual. Replacing
+Dada's Synaptics register addresses will not provide this touch stack. NT38771
+firmware initialization, SPI transport and frame-to-contact processing still need
+implementation or a verified controller mode that reports contacts directly.
 
-## Layout
+## What is implemented
 
-| Directory | Contents | Licence |
-| --- | --- | --- |
-| `kernel/` | `xnu-12377.121.6-dada.patch`: every kernel change against Apple's xnu-12377.121.6; `apply.sh` makes the kernel tree | APSL 2.0 |
-| `base/` | HakiOS kernel repository with our changes: EFI loader (`xnuloader/`), build and flashing tools (`tools/dada-*.sh`), device configs, docs | HakiOS's (APSL 2.0) |
-| `userland/` | HakiOS user space with our changes: iOS 26 bring-up, injection, Metal plug-in, audio HAL plug-in | HakiOS's (APSL 2.0) |
-| `uefi-dada/` | dada's UEFI: our patch to 7Night-kqx/uefi-dada (starts our XNU loader), `apply.sh`, build environment Dockerfile | BSD-2-Clause-Patent |
-| `gpu2/` | GPU path: patches to metal2vulkan, UniXNU NativeMetal and Mesa Turnip, plus build scripts | Each patch keeps the licence of the project it changes (see NOTICE.md) |
-| `tools/` | `export-from-work.sh` re-exports this repository from the working trees; `check-publishable.sh` looks for anything that must not be published before a commit | MIT |
+- Pinned source checkouts under `upstream/`; origins and commits in `sources.lock.json`.
+- Onyx board facts in `devices/onyx.json`, separating unknown values from evidence.
+- Reproducible HakiOS loader patch with explicit Onyx selection. Dada and Onyx share
+  framebuffer address `0xFC800000`, so framebuffer-only selection is ambiguous.
+- Onyx GIC addresses `0x17100000` / `0x17180000`, with `0x40000` redistributor stride.
+- Diagnostics EFI entry that prints CPU/GOP information and returns to UEFI before
+  kernel handoff, block operations, exception hooks or watchdog SMC calls.
+- Three upstream EFI BlockIO write calls replaced by an access-denied function;
+  persistent `logdump` logging disabled in the prepared source.
+- Read-only, serial-selected ADB inventory that works with spoofed ROM properties.
+- Local IPSW BuildManifest inspection.
+- Stock vendor_boot/DTBO inspection and bounded FDT parsing; the supplied stock
+  images confirm the GIC/CPU/SPI values. See `docs/bringup-2026-11-07.md`.
+- XNU 12377 source preparation with an Onyx passive touch object that compiles
+  against generated kernel headers. Legacy transport code is retained behind
+  compile-time exclusions and cannot be activated with boot arguments.
+- Private WSL Clang 19 build environment, support-library compatibility patches,
+  and local iOS 26 extraction tools.
 
-## Not included
+Build from Windows using the installed WSL distribution:
 
-This repository contains no binaries or firmware from Apple, Qualcomm, Xiaomi or anyone else.
+```powershell
+wsl -d Ubuntu-24.04 -- bash /mnt/c/path/to/ios-26-onyx/tools/build-loader.sh
+python tools/collect-device.py
+python -m unittest discover -s tests -v
+```
 
-## Acknowledgements
+Output: `out/onyx-loader/loader-onyx-diagnostics.efi`. This is an AArch64 EFI
+application, **not** an Android `boot.img`; do not pass it to fastboot as a boot image.
+The build does not package or start firmware on the phone. The application has
+been cross-compiled and linked, but has not run on hardware.
 
-- [HakiOS](https://github.com/oosexgang/hakios-xnu-kernel): the foundation of this project
-- [UniXNU](https://github.com/UniXNU/UniXNU): NativeAdreno / NativeMetal, Ath12kWifi, Snapdragon platform reference
-- [Data A Live](https://github.com/ShueiTsuki/data-a-live): reference for GPU, audio and CPU clocks of iOS on Snapdragon
-- [metal2vulkan](https://github.com/steelbrain/metal2vulkan): the Metal-to-Vulkan translation layer
-- [Mesa](https://mesa3d.org/) (Turnip / freedreno)
-- [Project Silicium / Mu-Silicium](https://github.com/Project-Silicium/Mu-Silicium)
-- [uefi-dada](https://github.com/7Night-kqx/uefi-dada): the Mu-Silicium port to the Xiaomi 15
-- Linux's msm, ath12k and qcom drivers: reference for register layouts and bring-up order
+## iOS input files
 
-The drivers are written from Linux's public descriptions. See NOTICE.md for details.
+The Dada launcher `base/tools/dada-ios.sh` explicitly references `23G90__iPhone18,1`.
+Use **iOS 26.6.2, build 23G90, iPhone 17 Pro (`iPhone18,1`)** as the initial userland
+candidate to reproduce that fork. The kernel patch is based on Apple tag
+`xnu-12377.121.6`. These facts do not establish that this exact stock IPSW kernel
+matches that source tag, nor guarantee ABI compatibility on Onyx.
 
-Apple, iOS and Metal are trademarks of Apple Inc. This project is not affiliated with Apple, Qualcomm or Xiaomi.
+Neither checkout includes an iOS 26 downloader. Old READMEs mention a 16.5 fetcher;
+the current common repository has a local-IPSW unpacker hardcoded for iOS 16.5.
+Do not run that unpacker on an iOS 26 image by merely overriding its size check.
+The Dada build references `ios26/fetch.sh`, which is absent from this checkout.
+
+With a locally acquired IPSW:
+
+```powershell
+python tools/check-ipsw.py C:\path\iPhone18,1_26.6.2_23G90_Restore.ipsw
+```
+
+This reads the manifest and component paths; it does not download, decrypt,
+authenticate, extract the full filesystem or flash anything. Firmware and system
+images remain local inputs and must not be committed.
+
+The supplied `iPhone18,1_26.6.2_23G90_Restore.ipsw` passes this identity check.
+Its root filesystem, SystemOS filesystem and arm64e dyld caches are now local
+under `/home/arbuxik/ios-26-onyx-build/ios26` in WSL. The 1597 SystemOS files that
+7-Zip could not decode were recovered with `ipsw` and checked against archive
+size metadata. Image assembly and hardware boot validation remain separate.
+
+## GitHub Actions build
+
+A manual macOS/Xcode kernel workflow is prepared in
+`.github/workflows/build-onyx-ios26.yml`; see [the CI instructions](docs/github-actions.md).
+It requires the real IIG generator and validates the linked arm64e artifact.
+Run it manually from the repository Actions tab; see the job logs for actual build results.
+
+## Preserve Android
+
+**Do not flash an iOS/APFS image to `userdata`.** On this phone `userdata` maps to
+`sda34` and `metadata` to `sda17`. Those are observations, not install targets.
+Android reports both file and metadata encryption. The upstream userdata carving
+tool describes a different, unencrypted layout and is not suitable as an Onyx recipe.
+
+Initial boot work should use RAM and a model-verified temporary UEFI boot image.
+No persistent boot selector, slot switch, boot-partition replacement, filesystem
+resize or GPT modification is implemented here. Keeping Android as the default
+and launching a temporary UEFI image is the intended first dual-boot workflow;
+it is not yet verified on this device.
+
+For later storage, an Android-managed DSU allocation is a candidate because the
+Dada loader supports DSU extents. Allocation, encryption behavior, extent stability,
+image size, slot identity and all write paths must be verified on this ROM first.
+The upstream DSU installer and raw `oem dsu patch` writer are not authorized install
+instructions for this port. No zero-risk preservation guarantee is possible for
+experimental firmware. A host-side write barrier cannot constrain firmware or
+an independently running kernel's native storage driver.
+
+## Remaining bring-up
+
+1. Verify actual bootloader unlock state independently of spoofed Android properties
+   and obtain a recoverable backup. Stock boot/vendor_boot/dtbo inputs have been
+   supplied and inspected; they are not a backup of the currently installed OxygenOS port.
+2. Integrate the diagnostics EFI into an Onyx Mu-Silicium RAM boot payload; audit
+   firmware behavior and validate GOP, live memory map and CPU feature registers.
+3. Build the patched XNU 12377 arm64e kernel and a tiny RAM-only PID1 image. Verify
+   interrupts, timer, page tables, PAC and return-to-loader before full userland.
+4. Adapt iOS 26 extraction/image assembly using the selected IPSW, then validate
+   launchd and framebuffer rendering with storage writes disabled.
+5. Implement and validate NT38771 transport and contact processing; connect its
+   events to HakiOS input. Confirm press, move, release, bounds and multitouch.
+6. Only after these milestones, validate persistent storage and a boot selector.
+
+## Sources and licensing
+
+- [Dada iOS 26 port](https://github.com/superboyyy/hakios-arm64e-dada)
+- [HakiOS common source](https://github.com/oosexgang/hakios-xnu-kernel)
+- [Project Silicium](https://github.com/Project-Silicium/Mu-Silicium)
+- [Official Onyx device tree](https://github.com/MiCode/kernel_devicetree/tree/onyx-v-oss)
+- [Onyx reference port](https://github.com/Aymon-njz/hackios-xnu-kernel-Onyx)
+- [POCO specifications](https://www.po.co/global/product/poco-f7/specs/)
+- [Apple release listing](https://developer.apple.com/news/releases/?id=07072025c)
+
+Upstream licenses and notices remain in their source trees. The loader patch
+modifies HakiOS source and must retain its applicable upstream licensing and attribution.
+No Apple or phone firmware binaries are redistributed by this project.

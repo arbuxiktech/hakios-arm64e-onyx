@@ -1,0 +1,40 @@
+diff --git a/xnu-env.sh b/xnu-env.sh
+--- a/xnu-env.sh
++++ b/xnu-env.sh
+@@ -15,4 +15,6 @@
+ export XNU_ARCH=${XNU_ARCH:-arm64}
+ # On macOS the cctools, mig, unifdef and csh come from Xcode and the system instead of theos and
+ # sources built here; the scripts look at this to choose.
+-[ "$(uname -s)" = Darwin ] && export XNU_HOST_DARWIN=1
++if [ "$(uname -s)" = Darwin ]; then
++    export XNU_HOST_DARWIN=1
++fi
+diff --git a/xnu-deps/host/bin/xnu-clang b/xnu-deps/host/bin/xnu-clang
+--- a/xnu-deps/host/bin/xnu-clang
++++ b/xnu-deps/host/bin/xnu-clang
+@@ -9,10 +9,10 @@
+ for a in "$@"; do
+   case "$a" in
+     -enable-trivial-auto-var-init-zero-knowing-it-will-be-removed-from-clang) ;;
+-    -fapple-kext-vtable-verify|-Wno-vla-cxx-extension) ;;
++    -fapple-kext-vtable-verify|-Wno-vla-cxx-extension|-mno-implicit-sme) ;;
+     -Werror|-Werror=*|-Weverything|-pedantic-errors) ;;
+     *) args+=("$a");;
+   esac
+ done
+-exec /usr/bin/$drv -include "$HB/../../hostinc/xnu_clang_compat.h" -target arm64-apple-ios${XNU_SDK_VERSION:-16.5} --ld-path="$HB/ld64" \
++exec "${ONYX_CLANG_ROOT:-/usr/bin}/$drv" -include "$HB/../../hostinc/xnu_clang_compat.h" -target arm64-apple-ios${XNU_SDK_VERSION:-16.5} --ld-path="$HB/ld64" \
+   -w "${extra[@]}" "${args[@]}"
+diff --git a/xnu-deps/setup.sh b/xnu-deps/setup.sh
+--- a/xnu-deps/setup.sh
++++ b/xnu-deps/setup.sh
+@@ -232,7 +232,8 @@
+ 		log "building libfirehose_kernel.a"
+ 		mkdir -p build/firehose
+ 		xnu-clang -arch ${XNU_ARCH:-arm64} -c -Os -mkernel -nostdinc -fno-builtin \
+-			-DKERNEL=1 -DKERNEL_PRIVATE=1 -DXNU_KERNEL_PRIVATE=0 -DPRIVATE=1 -D__DARWIN_64_BIT_INO_T=1 \
++			-isystem "$("${ONYX_CLANG_ROOT:-/usr/bin}/clang" -print-resource-dir)/include" \
++			-DKERNEL=1 -DKERNEL_PRIVATE=1 -DXNU_KERNEL_PRIVATE=1 -DPRIVATE=1 -D__DARWIN_64_BIT_INO_T=1 \
+ 			-DDISPATCH_USE_DTRACE=0 -DOS_ATOMIC_CONFIG_MEMORY_ORDER_DEPENDENCY=1 \
+ 			-DOS_ATOMIC_CONFIG_STARVATION_FREE_ONLY=0 -DOS_FIREHOSE_SPI=1 -DARM64_BOARD_CONFIG_BCM2837 \
+ 			-Ilibdispatch -Ilibdispatch/src -Ilibdispatch/src/firehose \
