@@ -44,6 +44,15 @@ implementation or a verified controller mode that reports contacts directly.
   compile-time exclusions and cannot be activated with boot arguments.
 - Private WSL Clang 19 build environment, support-library compatibility patches,
   and local iOS 26 extraction tools.
+- A linked arm64e XNU kernel built with Xcode 26.6 on GitHub Actions. The downloaded
+  artifact passed the local architecture and SHA-256 checks. Touch is passive;
+  Dada Wi-Fi/WLAN/Bluetooth transport is excluded from this initial build.
+- An Onyx Mu-Silicium diagnostic boot container with the EFI checker embedded
+  in RAM and selected storage/update modules excluded. The host build and package
+  checks pass. A revised gzip container reached visible UEFI diagnostics, and
+  the diagnostic application reached USB startup. USB log capture is still in
+  bring-up; see [diagnostic firmware](docs/onyx-uefi-diagnostics.md). The first
+  container was rejected and must not be retried.
 
 Build from Windows using the installed WSL distribution:
 
@@ -92,7 +101,9 @@ size metadata. Image assembly and hardware boot validation remain separate.
 A manual macOS/Xcode kernel workflow is prepared in
 `.github/workflows/build-onyx-ios26.yml`; see [the CI instructions](docs/github-actions.md).
 It requires the real IIG generator and validates the linked arm64e artifact.
-Run it manually from the repository Actions tab; see the job logs for actual build results.
+The [first successful build](https://github.com/arbuxiktech/hakios-arm64e-onyx/actions/runs/42397012052)
+produced a linked kernel at commit `92220b24cb53a2b1ae021900e222847a8576e300`.
+This artifact is not a flashable image or evidence of an Onyx hardware boot.
 
 ## Preserve Android
 
@@ -120,9 +131,9 @@ an independently running kernel's native storage driver.
 1. Verify actual bootloader unlock state independently of spoofed Android properties
    and obtain a recoverable backup. Stock boot/vendor_boot/dtbo inputs have been
    supplied and inspected; they are not a backup of the currently installed OxygenOS port.
-2. Integrate the diagnostics EFI into an Onyx Mu-Silicium RAM boot payload; audit
-   firmware behavior and validate GOP, live memory map and CPU feature registers.
-3. Build the patched XNU 12377 arm64e kernel and a tiny RAM-only PID1 image. Verify
+2. Validate the built Onyx Mu-Silicium diagnostic payload on hardware: review
+   firmware behavior and check GOP, live memory map and CPU feature registers.
+3. Package the linked XNU 12377 arm64e kernel with a tiny RAM-only PID1 image. Verify
    interrupts, timer, page tables, PAC and return-to-loader before full userland.
 4. Adapt iOS 26 extraction/image assembly using the selected IPSW, then validate
    launchd and framebuffer rendering with storage writes disabled.

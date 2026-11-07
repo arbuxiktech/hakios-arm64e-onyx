@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+[Defines]
+  INF_VERSION = 0x00010018
+  BASE_NAME = OnyxDiagnosticsBootManagerLib
+  FILE_GUID = E9B5291E-C9AA-4B21-AACF-F6BBBF332F02
+  VERSION_STRING = 0.1
+  MODULE_TYPE = DXE_DRIVER
+  LIBRARY_CLASS = PlatformBootManagerLib|DXE_DRIVER
+
+[Sources]
+  BootManager.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+
+[LibraryClasses]
+  BaseLib
+  DebugLib
+  DevicePathLib
+  DxeServicesLib
+  MemoryAllocationLib
+  UefiBootManagerLib
+  UefiBootServicesTableLib
+  UefiLib
+
+[Protocols]
+  gEfiGraphicsOutputProtocolGuid

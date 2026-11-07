@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+[Defines]
+  INF_VERSION = 0x00010018
+  BASE_NAME = OnyxUsbDiagnostics
+  FILE_GUID = 40CCE213-62E6-4D71-86C1-D690911E39B7
+  VERSION_STRING = 0.1
+  MODULE_TYPE = UEFI_APPLICATION
+  ENTRY_POINT = DiagnosticsEntry
+
+[Sources]
+  UsbDiagnostics.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  QcomPkg/QcomPkg.dec
+
+[LibraryClasses]
+  BaseLib
+  BaseMemoryLib
+  MemoryAllocationLib
+  PrintLib
+  UefiApplicationEntryPoint
+  UefiBootServicesTableLib
+  UefiRuntimeServicesTableLib
+  UefiLib
+
+[Protocols]
+  gEfiUsbDeviceProtocolGuid
+  gEfiUsbfnIoProtocolGuid
+  gEfiGraphicsOutputProtocolGuid

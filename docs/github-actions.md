@@ -6,8 +6,12 @@ version is an input: if the requested version is unavailable, the job lists
 installed Xcode applications and fails instead of silently using another compiler.
 
 The workflow is prepared for [arbuxiktech/hakios-arm64e-onyx](https://github.com/arbuxiktech/hakios-arm64e-onyx).
-Local syntax and helper checks do not establish that a remote build succeeds;
-use the actual Actions run and its artifacts to assess build status.
+The [verified successful run](https://github.com/arbuxiktech/hakios-arm64e-onyx/actions/runs/42397012052)
+built commit `92220b24cb53a2b1ae021900e222847a8576e300` with Xcode 26.6.
+Artifact `onyx-ios26-kernel-3` contains the linked 21,583,784-byte kernel and logs.
+Its kernel SHA-256 is `d0108a3710ae1ff3f58344763e4e178f495984dd359aa40e1eab05676ccbda77`.
+The archive digest, kernel digest and arm64e Mach-O header were checked again
+after download. The artifact expires after 14 days; the workflow can rebuild it.
 
 ## What the job does
 
@@ -37,9 +41,11 @@ select **Run workflow**. Use an Xcode version installed on the selected runner.
 The resulting artifact is named `onyx-ios26-kernel-<run number>` and is retained
 for 14 days. A failed job's artifact contains diagnostic logs, not a working kernel.
 
-This is a build path to address the Linux IIG/compiler limitations. The first
-macOS build may expose additional compatibility errors; those must be resolved
-from its real logs before any boot-image packaging.
+This build path resolves the Linux IIG/compiler limitations without removing PAC.
+The first macOS compilation reached linking but failed on external `nw_wifi_*`
+symbols from inherited Dada wireless code. The Onyx overlay excludes that Wi-Fi,
+WLAN and companion Bluetooth transport and its initialization call; no replacement
+symbols or permissive linker flags were introduced. The subsequent build passed.
 
 References:
 
